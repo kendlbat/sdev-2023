@@ -4,13 +4,21 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Quick-run C program",
+            "label": "Quick-run C program windows",
             "type": "shell",
             "command": "${workspaceFolder}\\util\\c_runonce.bat ${file}",
             "problemMatcher": [],
             "group": {
-                "kind": "build",
-                "isDefault": true
+                "kind": "build"
+            }
+        },
+        {
+            "label": "Quick-run C program linux",
+            "type": "shell",
+            "command": "${workspaceFolder}/util/c_runonce.sh ${file}",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build"
             }
         }
     ]
