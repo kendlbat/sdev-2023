@@ -1,0 +1,15 @@
+{
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "name": "umfrage",
+  "version": "1.0.0",
+  "main": "server.mjs",
+  "devDependencies": {},
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "author": "Tobias Kendlbacher",
+  "license": "MIT",
+  "description": ""
+}
