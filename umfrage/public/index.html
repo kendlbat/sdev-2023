@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Democracy</title>
+    <style>
+        form {
+            display: inline;
+        }
+
+        button {
+            font-size: xx-large;
+            border: none;
+            padding: 10px;
+            width: 100px;
+            height: 100px;
+            display: inline-block;
+        }
+
+        .yesbtn {
+            background-color: green;
+        }
+
+        .nobtn {
+            background-color: red;
+        }
+    </style>
+</head>
+<body>
+    <form action="/respond/yes" method="get">
+        <button class="yesbtn">Yes</button>
+    </form>
+    <form action="/respond/no" method="get">
+        <button class="nobtn">No</button>
+    </form>
+</body>
+</html>
