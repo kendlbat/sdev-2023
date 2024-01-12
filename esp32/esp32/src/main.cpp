@@ -26,9 +26,46 @@ const char* ascii_to_morse[] =
 AsyncWebServer server(80);
 
 void setup() {
+    // try reading littlefs
+    // Sleep 3 seconds
+    sleep(3);
+
+    if (!SPIFFS.begin(true)) {
+        Serial.println("An Error has occurred while mounting SPIFFS");
+        return;
+    }
+
+    // read boot counter, or create new one if not exists
+    File file = SPIFFS.open("/boot_count.txt", FILE_READ);
+    if (!file) {
+        Serial.println("Failed to open file for reading");
+        file = SPIFFS.open("/boot_count.txt", FILE_WRITE);
+        if (!file) {
+            Serial.println("Failed to open file for writing");
+            return;
+        }
+        file.println(0);
+    }
+
+    // read boot count
+    int bootCount = file.parseInt();
+    file.close();
+
+    file = SPIFFS.open("/boot_count.txt", FILE_WRITE);
+
+    // Write new boot count
+    file.seek(0);
+    bootCount++;
+    file.printf("%d", bootCount);
+    file.flush();
+    // Close the file
+    file.close();
+
+    Serial.begin(115200);
+    Serial.printf("Boot number: %d\n", bootCount);
+
     // put your setup code here, to run once:
     int result = myFunction(2, 3);
-    Serial.begin(9600);
     pinMode(LED, OUTPUT);
     pinMode(BEEP, OUTPUT);
     initWifi();
