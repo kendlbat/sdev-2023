@@ -1,137 +1,193 @@
 #include <Arduino.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 #include <WiFi.h>
 
-#include "ESPAsyncWebServer.h"
 #include "SPIFFS.h"
-
-#define LED 2
-#define BEEP 5
-
-// put function declarations here:
-int myFunction(int, int);
-void initWifi();
-
-String beepMessage = "";
-
-const char* ascii_to_morse[] =
-    {
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        "-----", ".----", "..---", "...--", "....-", ".....", "-....", "--...", "---..", "----.",  // 0...9
-        0, 0, 0, 0, 0, 0, 0,
-        ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....", "..", ".---", "-.-", ".-..", "--", "-.",
-        "---", ".--.", "--.-", ".-.", "...", "-", "..-", "...-", ".--", "-..-", "-.--", "--..",  // A...Z
-};
 
 AsyncWebServer server(80);
 
-void setup() {
-    // try reading littlefs
-    // Sleep 3 seconds
-    sleep(3);
+const char* input_parameter1 = "ssid";
+const char* input_parameter2 = "pass";
+const char* input_parameter3 = "ip";
 
-    if (!SPIFFS.begin(true)) {
-        Serial.println("An Error has occurred while mounting SPIFFS");
+// Variables to save values from HTML form
+String ssid;
+String pass;
+String ip;
+
+// File paths to save input values permanently
+const char* SSID_path = "/ssid.txt";
+const char* Password_path = "/pass.txt";
+const char* IP_path = "/ip.txt";
+
+IPAddress localIP;
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 0, 0);
+
+unsigned long previous_time = 0;
+const long Delay = 10000;
+
+const int ledPin = 2;
+String ledState;
+
+// Read File from SPIFFS
+String readFile(fs::FS& fs, const char* path) {
+    Serial.printf("Reading file: %s\r\n", path);
+
+    File file = fs.open(path);
+    if (!file || file.isDirectory()) {
+        Serial.println("- failed to open file for reading");
+        return String();
+    }
+
+    String fileContent;
+    while (file.available()) {
+        fileContent = file.readStringUntil('\n');
+        break;
+    }
+    return fileContent;
+}
+
+// Write file to SPIFFS
+void writeFile(fs::FS& fs, const char* path, const char* message) {
+    Serial.printf("Writing file: %s\r\n", path);
+
+    File file = fs.open(path, FILE_WRITE);
+    if (!file) {
+        Serial.println("- failed to open file for writing");
         return;
     }
+    if (file.print(message)) {
+        Serial.println("- file written");
+    } else {
+        Serial.println("- frite failed");
+    }
+}
 
-    // read boot counter, or create new one if not exists
-    File file = SPIFFS.open("/boot_count.txt", FILE_READ);
-    if (!file) {
-        Serial.println("Failed to open file for reading");
-        file = SPIFFS.open("/boot_count.txt", FILE_WRITE);
-        if (!file) {
-            Serial.println("Failed to open file for writing");
-            return;
-        }
-        file.println(0);
+// Initialize WiFi
+bool initialize_Wifi() {
+    if (ssid == "" || ip == "") {
+        Serial.println("Undefined SSID or IP address.");
+        return false;
     }
 
-    // read boot count
-    int bootCount = file.parseInt();
-    file.close();
+    WiFi.mode(WIFI_STA);
+    localIP.fromString(ip.c_str());
 
-    file = SPIFFS.open("/boot_count.txt", FILE_WRITE);
+    if (!WiFi.config(localIP, gateway, subnet)) {
+        Serial.println("STA Failed to configure");
+        return false;
+    }
+    WiFi.begin(ssid.c_str(), pass.c_str());
+    Serial.println("Connecting to WiFi...");
 
-    // Write new boot count
-    file.seek(0);
-    bootCount++;
-    file.printf("%d", bootCount);
-    file.flush();
-    // Close the file
-    file.close();
+    unsigned long current_time = millis();
+    previous_time = current_time;
 
-    Serial.begin(115200);
-    Serial.printf("Boot number: %d\n", bootCount);
-
-    // put your setup code here, to run once:
-    int result = myFunction(2, 3);
-    pinMode(LED, OUTPUT);
-    pinMode(BEEP, OUTPUT);
-    initWifi();
-
-    server.serveStatic("/", SPIFFS, "/data/");
-
-    server.on("^\\/beep\\/([A-Z ]+)$", HTTP_GET, [](AsyncWebServerRequest* request) {
-        String message = request->pathArg(0);
-        String morse = "";
-        // Iterate over chars and convert to morse
-        for (int i = 0; i < message.length(); i++) {
-            char c = message.charAt(i);
-            if (c >= 'A' && c <= 'Z') {
-                morse += ascii_to_morse[c];
-            } else if (c == ' ') {
-                morse += "  ";
-            }
-            morse += " ";
+    while (WiFi.status() != WL_CONNECTED) {
+        current_time = millis();
+        if (current_time - previous_time >= Delay) {
+            Serial.println("Failed to connect.");
+            return false;
         }
-        beepMessage = morse;
-        request->send(200, "text/plain", morse);
-    });
+    }
 
-    server.begin();
-    Serial.println("Setup done");
+    Serial.println(WiFi.localIP());
+    return true;
+}
+
+// Replaces placeholder with LED state value
+String processor(const String& var) {
+    if (var == "GPIO_STATE") {
+        if (digitalRead(ledPin)) {
+            ledState = "ON";
+        } else {
+            ledState = "OFF";
+        }
+        return ledState;
+    }
+    return String();
+}
+
+void setup() {
+    Serial.begin(115200);
+
+    if (!SPIFFS.begin(true)) {
+        Serial.println("An error has occurred while mounting SPIFFS");
+    }
+    Serial.println("SPIFFS mounted successfully");
+
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, LOW);
+
+    ssid = readFile(SPIFFS, SSID_path);
+    pass = readFile(SPIFFS, Password_path);
+    ip = readFile(SPIFFS, IP_path);
+    Serial.println(ssid);
+    Serial.println(pass);
+    Serial.println(ip);
+
+    if (initialize_Wifi()) {
+        server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+            request->send(SPIFFS, "/index.html", "text/html", false, processor);
+        });
+        server.serveStatic("/", SPIFFS, "/");
+
+        server.begin();
+    } else {
+        Serial.println("Setting Access Point");
+        WiFi.softAP("ESP32-WIFI-MANAGER", NULL);
+
+        IPAddress IP = WiFi.softAPIP();
+        Serial.print("AP IP address: ");
+        Serial.println(IP);
+
+        // Web Server Root URL
+        server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+            request->send(SPIFFS, "/index.html", "text/html");
+        });
+
+        server.serveStatic("/", SPIFFS, "/");
+
+        server.on("/", HTTP_POST, [](AsyncWebServerRequest* request) {
+            int params = request->params();
+            for (int i = 0; i < params; i++) {
+                AsyncWebParameter* p = request->getParam(i);
+                if (p->isPost()) {
+                    // HTTP POST ssid value
+                    if (p->name() == input_parameter1) {
+                        ssid = p->value().c_str();
+                        Serial.print("SSID set to: ");
+                        Serial.println(ssid);
+                        // Write file to save value
+                        writeFile(SPIFFS, SSID_path, ssid.c_str());
+                    }
+                    // HTTP POST pass value
+                    if (p->name() == input_parameter2) {
+                        pass = p->value().c_str();
+                        Serial.print("Password set to: ");
+                        Serial.println(pass);
+                        // Write file to save value
+                        writeFile(SPIFFS, Password_path, pass.c_str());
+                    }
+                    // HTTP POST ip value
+                    if (p->name() == input_parameter3) {
+                        ip = p->value().c_str();
+                        Serial.print("IP Address set to: ");
+                        Serial.println(ip);
+                        // Write file to save value
+                        writeFile(SPIFFS, IP_path, ip.c_str());
+                    }
+                }
+            }
+            request->send(200, "text/plain", "Success. ESP32 will now restart. Connect to your router and go to IP address: " + ip);
+            delay(3000);
+            ESP.restart();
+        });
+        server.begin();
+    }
 }
 
 void loop() {
-    // Get one char from beepMessage
-    if (beepMessage.length() > 0) {
-        char c = beepMessage.charAt(0);
-        beepMessage = beepMessage.substring(1);
-        if (c == '.') {
-            digitalWrite(LED, HIGH);
-            digitalWrite(BEEP, HIGH);
-            delay(100);
-            digitalWrite(LED, LOW);
-            digitalWrite(BEEP, LOW);
-            delay(100);
-        } else if (c == '-') {
-            digitalWrite(LED, HIGH);
-            digitalWrite(BEEP, HIGH);
-            delay(300);
-            digitalWrite(LED, LOW);
-            digitalWrite(BEEP, LOW);
-            delay(100);
-        } else if (c == ' ') {
-            delay(400);
-        }
-    }
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-    return x + y;
-}
-
-void initWifi() {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin("SSID", "PASS");
-    Serial.println("Connecting to WiFi...");
-    while (WiFi.status() != WL_CONNECTED) {
-        Serial.print(".");
-        delay(500);
-    }
-    Serial.println("Connected to the WiFi network");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
 }
